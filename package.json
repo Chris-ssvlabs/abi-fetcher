@@ -1,0 +1,25 @@
+{
+  "name": "abi-fetcher",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "get-core-abi": "tsx ./src/index.ts -a 0xE18d39c4139E535D5e4bb1e5510117B00276c810 -n hoodi -g "
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.7.0",
+  "dependencies": {
+    "@types/node": "^24.0.0",
+    "axios": "^1.9.0",
+    "dotenv": "^16.5.0",
+    "tsx": "^4.20.1",
+    "viem": "^2.31.0",
+    "yargs": "^18.0.0"
+  },
+  "devDependencies": {
+    "@types/yargs": "^17.0.33"
+  }
+}
