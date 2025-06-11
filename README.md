@@ -29,33 +29,36 @@ You can copy the `.env.example` file as a starting point.
 ## Usage
 
 ```bash
-pnpm start -- --address <contract-address> --network <network> --getters <getter1,getter2,...>
+pnpm start -- --address <contract-address> --network <network>
 ```
 
 Or with shortened options:
 
 ```bash
-pnpm start -- -a <contract-address> -n <network> -g <getter1,getter2,...>
+pnpm start -- -a <contract-address> -n <network>
 ```
 
 ### Arguments
 
 - `--address` or `-a`: Main contract address
-- `--network` or `-n`: Network where the contract is deployed (e.g., mainnet, sepolia, goerli, optimism, arbitrum)
-- `--getters` or `-g`: Comma-separated list of contract getter names which are used to get the addresses of module contracts
+- `--network` or `-n`: Network where the contract is deployed (e.g., mainnet, sepolia, hoodi)
 
 ### Example
 
 ```bash
-pnpm start -- --address 0x1234567890123456789012345678901234567890 --network mainnet --getters implementation,proxyAdmin,beacon
+pnpm start -- --address 0x1234567890123456789012345678901234567890 --network mainnet
 ```
+
+## How It Works
+
+The script fetches module addresses by calling the `getModuleAddress(uint256)` function on the main contract with consecutive integers starting from 0 until it receives an error or a zero address.
 
 ## Output
 
 The script generates the following files:
 
 - `baseAbi.json`: The ABI of the main contract
-- `<getter-name>.json`: The ABI of each submodule contract
+- `module_<index>.json`: The ABI of each submodule contract (index starts from 0)
 - `fullAbi.json`: The merged ABI containing the main contract's ABI and all events from submodules
 
 ## Development
@@ -63,5 +66,5 @@ The script generates the following files:
 For development, you can use the `dev` script:
 
 ```bash
-pnpm dev -- -a <contract-address> -n <network> -g <getter1,getter2,...>
+pnpm dev -- -a <contract-address> -n <network>
 ```

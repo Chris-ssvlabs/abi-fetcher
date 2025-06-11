@@ -24,24 +24,14 @@ const argv = yargs(hideBin(process.argv))
     type: 'string',
     demandOption: true
   })
-  .option('getters', {
-    alias: 'g',
-    description: 'Comma-separated list of contract getter names',
-    type: 'string',
-    demandOption: true
-  })
   .help()
   .alias('help', 'h')
   .parseSync();
 
-// Extract and format getter names
-const getterNames = argv.getters.split(',').map(name => name.trim());
-
 // Execute the ABI fetching process
 fetchFullAbi({
   mainContractAddress: argv.address,
-  network: argv.network,
-  getterNames
+  network: argv.network
 })
   .then(() => {
     console.log('✅ Full ABI successfully generated and saved to fullAbi.json');

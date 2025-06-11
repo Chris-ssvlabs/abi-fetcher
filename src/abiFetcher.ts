@@ -1,12 +1,11 @@
-import * as fs from 'fs/promises';
-import axios from 'axios';
-import { createPublicClient, http } from 'viem';
-import { type Chain, mainnet, sepolia, hoodi } from 'viem/chains';
+import * as fs from "fs/promises";
+import axios from "axios";
+import { createPublicClient, http, ContractFunctionExecutionError } from "viem";
+import { type Chain, mainnet, sepolia, hoodi } from "viem/chains";
 
 interface FetchFullAbiParams {
   mainContractAddress: string;
   network: string;
-  getterNames: string[];
 }
 
 interface EtherscanResponse {
@@ -28,7 +27,7 @@ type AbiItem = {
 const chainMap: Record<string, Chain> = {
   mainnet,
   sepolia,
-  hoodi
+  hoodi,
 };
 
 type SupportedNetwork = keyof typeof chainMap;
@@ -36,19 +35,22 @@ type SupportedNetwork = keyof typeof chainMap;
 // Get Etherscan API URL based on network
 function getEtherscanApiUrl(network: SupportedNetwork): string {
   switch (network.toLowerCase()) {
-    case 'mainnet':
-      return 'https://api.etherscan.io/api';
-    case 'sepolia':
-      return 'https://api-sepolia.etherscan.io/api';
-    case 'hoodi':
-      return 'https://api-hoodi.etherscan.io/api';
+    case "mainnet":
+      return "https://api.etherscan.io/api";
+    case "sepolia":
+      return "https://api-sepolia.etherscan.io/api";
+    case "hoodi":
+      return "https://api-hoodi.etherscan.io/api";
     default:
       throw new Error(`Unsupported network: ${network}`);
   }
 }
 
 // Fetch contract ABI from Etherscan
-async function fetchContractAbi(contractAddress: string, network: SupportedNetwork): Promise<AbiItem[]> {
+async function fetchContractAbi(
+  contractAddress: string,
+  network: SupportedNetwork,
+): Promise<AbiItem[]> {
   const apiUrl = getEtherscanApiUrl(network);
   const apiKey = process.env.ETHERSCAN_API_KEY;
 
@@ -57,14 +59,14 @@ async function fetchContractAbi(contractAddress: string, network: SupportedNetwo
   try {
     const response = await axios.get<EtherscanResponse>(apiUrl, {
       params: {
-        module: 'contract',
-        action: 'getabi',
+        module: "contract",
+        action: "getabi",
         address: contractAddress,
-        apikey: apiKey
-      }
+        apikey: apiKey,
+      },
     });
 
-    if (response.data.status !== '1') {
+    if (response.data.status !== "1") {
       throw new Error(`Etherscan API error: ${response.data.message}`);
     }
 
@@ -79,85 +81,119 @@ async function fetchContractAbi(contractAddress: string, network: SupportedNetwo
 
 // Extract event definitions from an ABI
 function extractEvents(abi: AbiItem[]): AbiItem[] {
-  return abi.filter(item => item.type === 'event');
+  return abi.filter((item) => item.type === "event");
 }
 
 // Save ABI to a JSON file
 async function saveAbiToFile(abi: AbiItem[], filePath: string): Promise<void> {
-  await fs.writeFile(filePath, JSON.stringify(abi, null, 2), 'utf8');
+  await fs.writeFile(filePath, JSON.stringify(abi, null, 2), "utf8");
   console.log(`ABI saved to ${filePath}`);
 }
 
 // Main function to fetch the full ABI
-export async function fetchFullAbi({ mainContractAddress, network, getterNames }: FetchFullAbiParams): Promise<void> {
+export async function fetchFullAbi({
+  mainContractAddress,
+  network,
+}: FetchFullAbiParams): Promise<void> {
   // Step 1: Fetch base contract ABI
   const baseAbi = await fetchContractAbi(mainContractAddress, network);
-  await saveAbiToFile(baseAbi, './baseAbi.json');
+  await saveAbiToFile(baseAbi, "./baseAbi.json");
 
   // Step 2: Instantiate base contract client
   const selectedChain = chainMap[network.toLowerCase()];
   if (!selectedChain) {
-    throw new Error(`Unsupported chain: ${network}. Available chains: ${Object.keys(chainMap).join(', ')}`);
+    throw new Error(
+      `Unsupported chain: ${network}. Available chains: ${Object.keys(chainMap).join(", ")}`,
+    );
   }
 
   const publicClient = createPublicClient({
     chain: selectedChain,
-    transport: http()
+    transport: http(),
   });
 
-  // Step 3: Ensure each getter exists in the base ABI
-  const validGetters = getterNames.filter(getterName => {
-    const exists = baseAbi.some(item => 
-      item.type === 'function' && 
-      item.name === getterName && 
-      item.stateMutability === 'view' && 
-      item.outputs && 
-      item.outputs.length > 0
+  // Step 3: Check if getModuleAddress function exists in the base ABI
+  const getModuleAddressFnExists = baseAbi.some(
+    (item) =>
+      item.type === "function" &&
+      item.name === "getModuleAddress" &&
+      item.stateMutability === "view" &&
+      item.inputs?.length === 1,
+  );
+
+  if (!getModuleAddressFnExists) {
+    throw new Error(
+      "getModuleAddress function not found in the base contract ABI",
     );
-
-    if (!exists) {
-      console.warn(`Warning: Getter function '${getterName}' not found in the base contract ABI`);
-    }
-
-    return exists;
-  });
-
-  if (validGetters.length === 0) {
-    throw new Error('No valid getter functions found');
   }
 
-  // Step 4: Fetch submodule ABIs
+  // Step 4: Fetch submodule ABIs by calling getModuleAddress with consecutive integers
   const allEvents: AbiItem[] = [];
+  let moduleIndex = 0;
+  let continueLoop = true;
 
-  for (const getter of validGetters) {
+  console.log("Starting to fetch module addresses using getModuleAddress...");
+
+  while (continueLoop) {
     try {
-      // Call the getter to get the submodule address
-      const submoduleAddress = await publicClient.readContract({
+      // Call getModuleAddress with the current index
+      const submoduleAddress = (await publicClient.readContract({
         address: mainContractAddress as `0x${string}`,
         abi: baseAbi,
-        functionName: getter
-      }) as string;
+        functionName: "getModuleAddress",
+        args: [BigInt(moduleIndex)],
+      })) as `0x${string}`;
 
-      // Fetch the submodule ABI
-      const submoduleAbi = await fetchContractAbi(submoduleAddress, network);
-      await saveAbiToFile(submoduleAbi, `./${getter}.json`);
+      console.log(`Found module at index ${moduleIndex}: ${submoduleAddress}`);
 
-      // Step 5: Extract events from submodule ABI
-      const events = extractEvents(submoduleAbi);
-      allEvents.push(...events);
+      if (submoduleAddress !== "0x0000000000000000000000000000000000000000") {
+        // Fetch the submodule ABI
+        const submoduleAbi = await fetchContractAbi(submoduleAddress, network);
+        await saveAbiToFile(submoduleAbi, `./module_${moduleIndex}.json`);
 
-      console.log(`Processed submodule from getter: ${getter}`);
+        // Step 5: Extract events from submodule ABI
+        const events = extractEvents(submoduleAbi);
+        allEvents.push(...events);
+      } else {
+        console.log(
+          `Found submodule address is 0x0000...0000, skipping. { moduleIndex: ${moduleIndex}}`,
+        );
+      }
+
+      console.log(`Processed submodule at index: ${moduleIndex}`);
+      moduleIndex++;
     } catch (error) {
-      console.error(`Error processing getter ${getter}:`, error);
+      if (error instanceof ContractFunctionExecutionError) {
+        console.log(
+          `No more modules found after index ${moduleIndex - 1}, stopping.`,
+        );
+        continueLoop = false;
+      } else {
+        console.error(
+          `Error processing module at index ${moduleIndex}:`,
+          error,
+        );
+        continueLoop = false;
+      }
     }
+  }
+
+  if (moduleIndex === 0) {
+    console.warn("No modules were found using getModuleAddress");
+  } else {
+    console.log(`Successfully processed ${moduleIndex} modules.`);
   }
 
   // Step 6: Merge base ABI with extracted events
   // Filter out duplicate events based on name and inputs
   const uniqueEvents = allEvents.filter((event, index, self) => {
-    return index === self.findIndex(e => 
-      e.name === event.name && 
-      JSON.stringify(e.inputs) === JSON.stringify(event.inputs)
+    return (
+      index ===
+      self.findIndex(
+        (e) =>
+          e.name === event.name &&
+          JSON.stringify(e.inputs) === JSON.stringify(event.inputs),
+      )
     );
   });
 
@@ -166,10 +202,11 @@ export async function fetchFullAbi({ mainContractAddress, network, getterNames }
 
   // Add events that don't already exist in the base ABI
   for (const event of uniqueEvents) {
-    const exists = baseAbi.some(item => 
-      item.type === 'event' && 
-      item.name === event.name && 
-      JSON.stringify(item.inputs) === JSON.stringify(event.inputs)
+    const exists = baseAbi.some(
+      (item) =>
+        item.type === "event" &&
+        item.name === event.name &&
+        JSON.stringify(item.inputs) === JSON.stringify(event.inputs),
     );
 
     if (!exists) {
@@ -177,5 +214,5 @@ export async function fetchFullAbi({ mainContractAddress, network, getterNames }
     }
   }
 
-  await saveAbiToFile(fullAbi, './fullAbi.json');
+  await saveAbiToFile(fullAbi, "./fullAbi.json");
 }

@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "get-core-abi": "tsx ./src/index.ts -a 0xE18d39c4139E535D5e4bb1e5510117B00276c810 -n hoodi -g "
+    "get-core-abi": "tsx ./src/index.ts -a 0x0ae7f42e1189aef14b1ab7f970db05eb1a5503a1 -n hoodi"
   },
   "keywords": [],
   "author": "",
