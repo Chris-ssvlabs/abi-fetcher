@@ -1,6 +1,12 @@
 import * as fs from "fs/promises";
 import axios from "axios";
-import { createPublicClient, http, ContractFunctionExecutionError } from "viem";
+import {
+  createPublicClient,
+  http,
+  ContractFunctionExecutionError,
+  trim,
+  Address,
+} from "viem";
 import { type Chain, mainnet, sepolia, hoodi } from "viem/chains";
 
 interface FetchFullAbiParams {
@@ -31,6 +37,9 @@ const chainMap: Record<string, Chain> = {
 };
 
 type SupportedNetwork = keyof typeof chainMap;
+
+const EIP_1967_IMPLEMENTATION_SLOT =
+  "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
 
 // Get Etherscan API URL based on network
 function getEtherscanApiUrl(network: SupportedNetwork): string {
@@ -95,11 +104,11 @@ export async function fetchFullAbi({
   mainContractAddress,
   network,
 }: FetchFullAbiParams): Promise<void> {
-  // Step 1: Fetch base contract ABI
-  const baseAbi = await fetchContractAbi(mainContractAddress, network);
-  await saveAbiToFile(baseAbi, "./baseAbi.json");
+  console.log(
+    `Starting ABI fetching for proxy contract at ${mainContractAddress}`,
+  );
 
-  // Step 2: Instantiate base contract client
+  // Step 1: Instantiate public client for chain interaction
   const selectedChain = chainMap[network.toLowerCase()];
   if (!selectedChain) {
     throw new Error(
@@ -112,8 +121,39 @@ export async function fetchFullAbi({
     transport: http(),
   });
 
-  // Step 3: Check if getModuleAddress function exists in the base ABI
-  const getModuleAddressFnExists = baseAbi.some(
+  // Step 2: Get the implementation address from the proxy contract
+  console.log(
+    "Getting implementation address from proxy by calling storageAt...",
+  );
+  let implementationAddress: Address;
+  try {
+    const implementationAddressHex = await publicClient.getStorageAt({
+      address: mainContractAddress as `0x${string}`,
+      slot: EIP_1967_IMPLEMENTATION_SLOT,
+    });
+
+    console.log(`Implementation address slot: ${implementationAddressHex}`);
+
+    implementationAddress = trim(implementationAddressHex);
+
+    console.log(`Implementation contract address: ${implementationAddress}`);
+  } catch (error) {
+    console.error("Error getting implementation address:", error);
+    throw new Error(
+      "Failed to get implementation address. Make sure the provided address is an EIP-1967 proxy contract.",
+    );
+  }
+
+  // Step 3: Fetch implementation contract ABI
+  console.log("Fetching implementation contract ABI...");
+  const implementationAbi = await fetchContractAbi(
+    implementationAddress,
+    network,
+  );
+  await saveAbiToFile(implementationAbi, "./baseAbi.json");
+
+  // Step 4: Check if the getModuleAddress function exists in the implementation ABI
+  const getModuleAddressFnExists = implementationAbi.some(
     (item) =>
       item.type === "function" &&
       item.name === "getModuleAddress" &&
@@ -123,11 +163,12 @@ export async function fetchFullAbi({
 
   if (!getModuleAddressFnExists) {
     throw new Error(
-      "getModuleAddress function not found in the base contract ABI",
+      "getModuleAddress function not found in the implementation contract ABI",
     );
   }
 
-  // Step 4: Fetch submodule ABIs by calling getModuleAddress with consecutive integers
+  // Step 5: Fetch submodule ABIs by calling getModuleAddress with consecutive integers
+  // through the proxy contract but using the implementation ABI
   const allEvents: AbiItem[] = [];
   let moduleIndex = 0;
   let continueLoop = true;
@@ -136,10 +177,10 @@ export async function fetchFullAbi({
 
   while (continueLoop) {
     try {
-      // Call getModuleAddress with the current index
+      // Call getModuleAddress with the current index through the proxy contract
       const submoduleAddress = (await publicClient.readContract({
-        address: mainContractAddress as `0x${string}`,
-        abi: baseAbi,
+        address: mainContractAddress as `0x${string}`, // Use proxy address
+        abi: implementationAbi, // Use implementation ABI
         functionName: "getModuleAddress",
         args: [BigInt(moduleIndex)],
       })) as `0x${string}`;
@@ -151,7 +192,7 @@ export async function fetchFullAbi({
         const submoduleAbi = await fetchContractAbi(submoduleAddress, network);
         await saveAbiToFile(submoduleAbi, `./module_${moduleIndex}.json`);
 
-        // Step 5: Extract events from submodule ABI
+        // Step 6: Extract events from submodule ABI
         const events = extractEvents(submoduleAbi);
         allEvents.push(...events);
       } else {
@@ -184,7 +225,7 @@ export async function fetchFullAbi({
     console.log(`Successfully processed ${moduleIndex} modules.`);
   }
 
-  // Step 6: Merge base ABI with extracted events
+  // Step 7: Merge implementation ABI with extracted events
   // Filter out duplicate events based on name and inputs
   const uniqueEvents = allEvents.filter((event, index, self) => {
     return (
@@ -197,12 +238,12 @@ export async function fetchFullAbi({
     );
   });
 
-  // Merge base ABI with unique events
-  const fullAbi = [...baseAbi];
+  // Merge implementation ABI with unique events
+  const fullAbi = [...implementationAbi];
 
-  // Add events that don't already exist in the base ABI
+  // Add events that don't already exist in the implementation ABI
   for (const event of uniqueEvents) {
-    const exists = baseAbi.some(
+    const exists = implementationAbi.some(
       (item) =>
         item.type === "event" &&
         item.name === event.name &&
@@ -215,4 +256,5 @@ export async function fetchFullAbi({
   }
 
   await saveAbiToFile(fullAbi, "./fullAbi.json");
+  console.log("Completed merging all ABIs and events.");
 }
