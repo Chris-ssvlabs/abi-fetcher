@@ -95,6 +95,18 @@ function extractEvents(abi: AbiItem[]): AbiItem[] {
 
 // Save ABI to a JSON file
 async function saveAbiToFile(abi: AbiItem[], filePath: string): Promise<void> {
+  // Extract directory path from the file path
+  const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
+
+  // Create directories if they don't exist
+  if (dirPath) {
+    try {
+      await fs.mkdir(dirPath, { recursive: true });
+    } catch (error) {
+      throw new Error(`Failed to create directory ${dirPath}: ${error}`);
+    }
+  }
+
   await fs.writeFile(filePath, JSON.stringify(abi, null, 2), "utf8");
   console.log(`ABI saved to ${filePath}`);
 }
@@ -150,7 +162,7 @@ export async function fetchFullAbi({
     implementationAddress,
     network,
   );
-  await saveAbiToFile(implementationAbi, "./baseAbi.json");
+  await saveAbiToFile(implementationAbi, "./abis/baseAbi.json");
 
   // Step 4: Check if the getModuleAddress function exists in the implementation ABI
   const getModuleAddressFnExists = implementationAbi.some(
@@ -190,7 +202,7 @@ export async function fetchFullAbi({
       if (submoduleAddress !== "0x0000000000000000000000000000000000000000") {
         // Fetch the submodule ABI
         const submoduleAbi = await fetchContractAbi(submoduleAddress, network);
-        await saveAbiToFile(submoduleAbi, `./module_${moduleIndex}.json`);
+        await saveAbiToFile(submoduleAbi, `./abis/modules/module_${moduleIndex}.json`);
 
         // Step 6: Extract events from submodule ABI
         const events = extractEvents(submoduleAbi);
@@ -255,6 +267,6 @@ export async function fetchFullAbi({
     }
   }
 
-  await saveAbiToFile(fullAbi, "./fullAbi.json");
+  await saveAbiToFile(fullAbi, "./abis/fullAbi.json");
   console.log("Completed merging all ABIs and events.");
 }
