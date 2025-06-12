@@ -11,9 +11,6 @@ cd abi-fetcher
 
 # Install dependencies
 pnpm install
-
-# Build the project
-pnpm build
 ```
 
 ## Configuration
@@ -29,13 +26,13 @@ You can copy the `.env.example` file as a starting point.
 ## Usage
 
 ```bash
-pnpm start -- --address <proxy-contract-address> --network <network>
+pnpm get-abi -- --address <proxy-contract-address> --network <network>
 ```
 
 Or with shortened options:
 
 ```bash
-pnpm start -- -a <proxy-contract-address> -n <network>
+pnpm get-abi -- -a <proxy-contract-address> -n <network>
 ```
 
 ### Arguments
@@ -49,9 +46,13 @@ pnpm start -- -a <proxy-contract-address> -n <network>
 pnpm start -- --address 0x1234567890123456789012345678901234567890 --network mainnet
 ```
 
+## IMPORTANT NOTE
+
+This script assumes that there is a `getModuleAddress(uint256)` getter at Implementation Contract which allows to retrieve the addresses of Contract Modules.
+
 ## How It Works
 
-1. Gets the implementation contract address by calling `_implementation()` on the proxy contract
+1. Gets the implementation contract address by retrieving it from the storage slot on the proxy contract
 2. Fetches the implementation contract ABI
 3. Calls the `getModuleAddress(uint256)` function on the proxy contract (using the implementation ABI)
 4. Continues calling with consecutive integers starting from 0 until it receives an error or a zero address
@@ -65,10 +66,3 @@ The script generates the following files:
 - `module_<index>.json`: The ABI of each submodule contract (index starts from 0)
 - `fullAbi.json`: The merged ABI containing the implementation contract's ABI and all events from submodules
 
-## Development
-
-For development, you can use the `dev` script:
-
-```bash
-pnpm dev -- -a <proxy-contract-address> -n <network>
-```
