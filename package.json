@@ -6,7 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "get-abi": "tsx ./src/index.ts",
-    "get-core-abi": "pnpm get-abi -a 0xE18d39c4139E535D5e4bb1e5510117B00276c810 -n hoodi"
+    "get-core-abi": "pnpm get-abi -a 0xd88383377f6B50f4569B9Ed09dfaF0dce5De4a73 -n hoodi"
   },
   "keywords": [],
   "author": "",
