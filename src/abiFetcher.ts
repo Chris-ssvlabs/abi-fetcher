@@ -213,7 +213,9 @@ export async function fetchFullAbi({
         );
       }
 
-      console.log(`Processed submodule at index: ${moduleIndex}`);
+      const sleepValue = 1000
+      console.log(`Processed submodule at index: ${moduleIndex} - sleeping for ${sleepValue/1000} second to mitigate Etherscan free tier rate limit`);
+      await sleep(sleepValue);
       moduleIndex++;
     } catch (error) {
       if (error instanceof ContractFunctionExecutionError) {
@@ -269,4 +271,11 @@ export async function fetchFullAbi({
 
   await saveAbiToFile(fullAbi, "./abis/fullAbi.json");
   console.log("Completed merging all ABIs and events.");
+}
+
+
+function sleep(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
